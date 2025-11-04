@@ -1418,11 +1418,30 @@ if st.button("🚀 Generate Complete Web Story"):
                     updated_html = re.sub(r'href="\{(https://[^}]+)\}"', r'href="\1"', updated_html)
                     updated_html = re.sub(r'src="\{(https://[^}]+)\}"', r'src="\1"', updated_html)
                     
+                    # Upload HTML file to S3 bucket "suvichaarstories"
+                    html_filename = f"{slug_nano}.html"
+                    html_s3_key = html_filename
+                    html_bucket = "suvichaarstories"
+                    
+                    try:
+                        with st.spinner("📤 Uploading HTML file to S3..."):
+                            s3_client.put_object(
+                                Bucket=html_bucket,
+                                Key=html_s3_key,
+                                Body=updated_html.encode('utf-8'),
+                                ContentType='text/html'
+                            )
+                        st.success(f"✅ HTML file uploaded successfully to S3!")
+                    except Exception as e:
+                        st.warning(f"⚠️ Failed to upload HTML to S3: {str(e)}")
+                    
+                    # Display canurl
+                    st.info(f"🔗 **Story URL:** {canurl}")
+                    st.info(f"🔗 **Story URL (Alternative):** {canurl1}")
+                    
                     st.success("✅ Complete! Your web story is ready!")
                     
                     # Download HTML file
-                    html_filename = f"{slug_nano}.html"
-                    
                     st.download_button(
                         label="⬇️ Download Final HTML",
                         data=updated_html,
