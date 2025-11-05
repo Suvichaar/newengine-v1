@@ -1091,13 +1091,14 @@ st.subheader("📥 Input Options")
 
 input_method = st.radio(
     "Choose input method:",
-    ["Article URL", "Text Field", "Upload PDF", "Upload DOCX"],
+    ["Article URL", "Text Field", "Upload PDF", "Upload DOCX", "Upload Image (OCR)"],
     horizontal=True
 )
 
 url = None
 manual_text = None
 uploaded_file = None
+article_image_file = None
 
 if input_method == "Article URL":
     url = st.text_input("Enter a news article URL")
@@ -1114,6 +1115,10 @@ elif input_method == "Upload PDF":
 elif input_method == "Upload DOCX":
     uploaded_file = st.file_uploader("Upload DOCX file", type=["docx"])
     if uploaded_file:
+        url = None
+elif input_method == "Upload Image (OCR)":
+    article_image_file = st.file_uploader("Upload an article image (JPG/PNG) for OCR", type=["jpg", "jpeg", "png", "webp"])
+    if article_image_file:
         url = None
 
 # Image upload
@@ -1194,6 +1199,21 @@ if st.button("🚀 Generate Complete Web Story"):
                     st.stop()
             except Exception as e:
                 st.error(f"❌ Error extracting from DOCX: {str(e)}")
+                st.stop()
+    elif input_method == "Upload Image (OCR)" and article_image_file:
+        with st.spinner("🔄 Step 1/4: Extracting text from article image (OCR)..."):
+            try:
+                ocr_text = extract_text_from_image(article_image_file)
+                if ocr_text:
+                    lines = ocr_text.strip().split('\n')
+                    title = lines[0] if lines else "Untitled from Image"
+                    summary = ocr_text[:300].strip()
+                    full_text = ocr_text.strip()
+                else:
+                    st.error("❌ Could not extract text from the uploaded article image")
+                    st.stop()
+            except Exception as e:
+                st.error(f"❌ Error extracting text from article image: {str(e)}")
                 st.stop()
     elif extract_text_from_uploaded_image and uploaded_image:
         with st.spinner("🔄 Step 1/4: Extracting text from image (OCR)..."):
@@ -1290,7 +1310,7 @@ if st.button("🚀 Generate Complete Web Story"):
                             original_image_url, image_s3_key = upload_image_to_s3(uploaded_image, bucket_name=AWS_BUCKET)
                             if original_image_url and image_s3_key:
                                 # Generate resized image URL for slide backgrounds (412x618 for web story aspect ratio)
-                                resized_image_url = get_resized_image_url(image_s3_key, width=412, height=618, bucket_name=AWS_BUCKET)
+                                resized_image_url = get_resized_image_url(image_s3_key, width=720, height=1280, bucket_name=AWS_BUCKET)
                                 if not resized_image_url:
                                     st.warning("⚠️ Could not generate resized image, using default")
                                     resized_image_url = None
@@ -1394,7 +1414,7 @@ if st.button("🚀 Generate Complete Web Story"):
                         cdn_key_path = image_s3_key
                     
                     resize_presets = {
-                        "potraitcoverurl": (640, 853),
+                        "potraitcoverurl": (720, 1280),
                         "msthumbnailcoverurl": (300, 300),
                     }
                     
