@@ -668,47 +668,27 @@ def generate_slide(paragraph: str, audio_url: str, background_image_url: str = N
         background_image_url = "https://media.suvichaar.org/upload/polaris/polarisslide.png"
     
     return f"""
-        <amp-story-page id="c29cbf94-847a-4bb7-a4eb-47d17d8c2d5a" auto-advance-after="page-c29cbf94-847a-4bb7-a4eb-47d17d8c2d5a-background-audio" class="i-amphtml-layout-container" i-amphtml-layout="container">
-            <amp-story-animation layout="nodisplay" trigger="visibility" class="i-amphtml-layout-nodisplay" hidden="hidden" i-amphtml-layout="nodisplay">
-                <script type="application/json">[{{"selector":"#anim-1a95e072-cada-435a-afea-082ddd65ff10","keyframes":{{"opacity":[0,1]}},"delay":0,"duration":600,"easing":"cubic-bezier(0.2, 0.6, 0.0, 1)","fill":"both"}}]</script>
-            </amp-story-animation>
-            <amp-story-animation layout="nodisplay" trigger="visibility" class="i-amphtml-layout-nodisplay" hidden="hidden" i-amphtml-layout="nodisplay">
-                <script type="application/json">[{{"selector":"#anim-a938fe3f-03cf-47c5-9a84-da919c4f870b","keyframes":{{"transform":["translate3d(-115.2381%, 0px, 0)","translate3d(0px, 0px, 0)"]}},"delay":0,"duration":600,"easing":"cubic-bezier(0.2, 0.6, 0.0, 1)","fill":"both"}}]</script>
-            </amp-story-animation>
-            <amp-story-animation layout="nodisplay" trigger="visibility" class="i-amphtml-layout-nodisplay" hidden="hidden" i-amphtml-layout="nodisplay">
-                <script type="application/json">[{{"selector":"#anim-f7c5981e-ac77-48d5-9b40-7a987a3e2ab0","keyframes":{{"opacity":[0,1]}},"delay":0,"duration":600,"easing":"cubic-bezier(0.2, 0.6, 0.0, 1)","fill":"both"}}]</script>
-            </amp-story-animation>
-            <amp-story-animation layout="nodisplay" trigger="visibility" class="i-amphtml-layout-nodisplay" hidden="hidden" i-amphtml-layout="nodisplay">
-                <script type="application/json">[{{"selector":"#anim-0c1e94dd-ab91-415c-9372-0aa2e7e61630","keyframes":{{"transform":["translate3d(-115.55555%, 0px, 0)","translate3d(0px, 0px, 0)"]}},"delay":0,"duration":600,"easing":"cubic-bezier(0.2, 0.6, 0.0, 1)","fill":"both"}}]</script>
-            </amp-story-animation>
-            <amp-story-grid-layer template="vertical" aspect-ratio="412:618" class="grid-layer i-amphtml-layout-container" i-amphtml-layout="container" style="--aspect-ratio:412/618;">
-                <div class="page-fullbleed-area"><div class="page-safe-area">
-                    <div class="_6120891"><div class="_89d52dd mask" id="el-f00095ab-c147-4f19-9857-72ac678f953f">
-                        <div class="_dc67a5c fill"></div></div></div></div></div>
-            </amp-story-grid-layer>
-            <amp-story-grid-layer template="fill" class="i-amphtml-layout-container" i-amphtml-layout="container">
-                <amp-video autoplay="autoplay" layout="fixed" width="1" height="1" poster="" id="page-c29cbf94-847a-4bb7-a4eb-47d17d8c2d5a-background-audio" cache="google" class="i-amphtml-layout-fixed i-amphtml-layout-size-defined" style="width:1px;height:1px" i-amphtml-layout="fixed">
-                    <source type="audio/mpeg" src="{audio_url}">
-                </amp-video>
-            </amp-story-grid-layer>
-            <amp-story-grid-layer template="vertical" aspect-ratio="412:618" class="grid-layer i-amphtml-layout-container" i-amphtml-layout="container" style="--aspect-ratio:412/618;">
-                <div class="page-fullbleed-area"><div class="page-safe-area">
-                    <div class="_c19e533"><div class="_89d52dd mask" id="el-344ed989-789b-4a01-a124-9ae1d15d67f4">
-                        <div data-leaf-element="true" class="_8aed44c">
-                            <amp-img layout="fill" src="{background_image_url}" alt="slide-background" disable-inline-width="true" class="i-amphtml-layout-fill i-amphtml-layout-size-defined" i-amphtml-layout="fill"></amp-img>
-                        </div></div></div>
-                    <div class="_3d0c7a9"><div id="anim-1a95e072-cada-435a-afea-082ddd65ff10" class="_75da10d animation-wrapper">
-                        <div id="anim-a938fe3f-03cf-47c5-9a84-da919c4f870b" class="_e559378 animation-wrapper">
-                            <div id="el-2f080472-6c81-40a1-ac00-339cc8981388" class="_5342a26">
-                                <h3 class="_d1a8d0d fill text-wrapper"><span><span class="_14af73e">{paragraph}</span></span></h3>
-                            </div></div></div></div>
-                    <div class="_a336742"><div id="anim-f7c5981e-ac77-48d5-9b40-7a987a3e2ab0" class="_75da10d animation-wrapper">
-                        <div id="anim-0c1e94dd-ab91-415c-9372-0aa2e7e61630" class="_09239f8 animation-wrapper">
-                            <div id="el-1a0d583c-c99b-4156-825b-3188408c0551" class="_ee8f788">
-                                <h2 class="_59f9bb8 fill text-wrapper"><span><span class="_14af73e"></span></span></h2>
-                            </div></div></div></div></div></div>
-            </amp-story-grid-layer>
-        </amp-story-page>
+        <amp-story-page id="cover-slide" auto-advance-after="cover-audio">
+        <amp-story-grid-layer template="fill">
+          <amp-img src="{background_image_url}"
+            width="720" height="1280" layout="responsive">
+          </amp-img>
+        </amp-story-grid-layer>
+        <amp-story-grid-layer template="fill">
+          <amp-video autoplay loop layout="fixed" width="1" height="1" poster="" id="cover-audio">
+            <source type="audio/mpeg" src="{audio_url}">
+          </amp-video>
+        </amp-story-grid-layer>
+        <amp-story-grid-layer template="vertical">
+          <div class="centered-container">
+            
+            <div class="text1">
+              {paragraph}
+            </div>
+           <div class="footer"><p>©SuvichaarAI</p></div>
+          </div>
+        </amp-story-grid-layer>
+      </amp-story-page>
         """
 
 def replace_placeholders_in_html(html_text, json_data, background_image_url=None):
