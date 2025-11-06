@@ -1366,7 +1366,7 @@ if st.button("🚀 Generate Complete Web Story"):
                     }
                     selected_user = random.choice(list(user_mapping.keys()))
                     
-                    # Replace all placeholders
+                    # Replace all placeholders - do this BEFORE image URL replacements
                     updated_html = updated_html.replace("{{user}}", selected_user)
                     updated_html = updated_html.replace("{{userprofileurl}}", user_mapping[selected_user])
                     updated_html = updated_html.replace("{{publishedtime}}", datetime.now(timezone.utc).isoformat(timespec='seconds'))
@@ -1378,6 +1378,33 @@ if st.button("🚀 Generate Complete Web Story"):
                     updated_html = updated_html.replace("{{metakeywords}}", meta_keywords)
                     updated_html = updated_html.replace("{{contenttype}}", content_type)
                     updated_html = updated_html.replace("{{lang}}", language)
+                    updated_html = updated_html.replace("{{storytitle}}", storytitle)
+                    updated_html = updated_html.replace("{{category}}", category)
+                    
+                    # Replace storytitle audio URL
+                    storytitle_audio = tts_output.get("slide1", {}).get("audio_url", "")
+                    updated_html = updated_html.replace("{{storytitle_audiourl}}", storytitle_audio)
+                    
+                    # Replace site logo placeholders with default values
+                    default_logo_base = "https://media.suvichaar.org/filters:resize"
+                    updated_html = updated_html.replace("{{sitelogo32x32}}", f"{default_logo_base}/32x32/media/brandasset/suvichaariconblack.png")
+                    updated_html = updated_html.replace("{{sitelogo192x192}}", f"{default_logo_base}/192x192/media/brandasset/suvichaariconblack.png")
+                    updated_html = updated_html.replace("{{sitelogo180x180}}", f"{default_logo_base}/180x180/media/brandasset/suvichaariconblack.png")
+                    updated_html = updated_html.replace("{{sitelogo144x144}}", f"{default_logo_base}/144x144/media/brandasset/suvichaariconblack.png")
+                    updated_html = updated_html.replace("{{sitelogo96x96}}", f"{default_logo_base}/96x96/media/brandasset/suvichaariconblack.png")
+                    
+                    # Replace organization placeholder
+                    updated_html = updated_html.replace("{{organization}}", "Suvichaar")
+                    
+                    # Replace publisher placeholder
+                    updated_html = updated_html.replace("{{publisher}}", "Suvichaar")
+                    updated_html = updated_html.replace("{{publisherlogosrc}}", "https://media.suvichaar.org/media/designasset/brandasset/icons/quaternary/whitequaternaryicon.png")
+                    
+                    # Replace prev/next story placeholders (empty for now)
+                    updated_html = updated_html.replace("{{prevstorytitle}}", "")
+                    updated_html = updated_html.replace("{{prevstorylink}}", "")
+                    updated_html = updated_html.replace("{{nextstorytitle}}", "")
+                    updated_html = updated_html.replace("{{nextstorylink}}", "")
                     
                     # Use original image URL (non-resized) for image0 placeholder
                     updated_html = updated_html.replace("{{image0}}", image_url)
@@ -1412,11 +1439,34 @@ if st.button("🚀 Generate Complete Web Story"):
                         }
                         encoded = base64.urlsafe_b64encode(json.dumps(template).encode()).decode()
                         final_url = f"{CDN_PREFIX_MEDIA}{encoded}"
-                        updated_html = updated_html.replace(f"{{{label}}}", final_url)
+                        # Replace placeholder - ensure no curly braces in replacement
+                        placeholder = f"{{{{{label}}}}}"
+                        updated_html = updated_html.replace(placeholder, final_url)
                     
-                    # Cleanup
-                    updated_html = re.sub(r'href="\{(https://[^}]+)\}"', r'href="\1"', updated_html)
-                    updated_html = re.sub(r'src="\{(https://[^}]+)\}"', r'src="\1"', updated_html)
+                    # Comprehensive cleanup: Remove curly braces from URLs anywhere in the HTML
+                    # This handles cases where URLs might have been wrapped in braces
+                    updated_html = re.sub(r'\{(\s*https?://[^\s"\'<>}]+)\}', r'\1', updated_html)
+                    updated_html = re.sub(r'(\s*https?://[^\s"\'<>}]+)\}', r'\1', updated_html)
+                    updated_html = re.sub(r'\{(\s*https?://[^\s"\'<>}]+)', r'\1', updated_html)
+                    
+                    # Also clean up in attribute values (href, src, content, etc.)
+                    updated_html = re.sub(r'(href|src|content|url|poster-portrait-src|publisher-logo-src)="\{([^"]+)\}"', r'\1="\2"', updated_html)
+                    updated_html = re.sub(r'(href|src|content|url|poster-portrait-src|publisher-logo-src)=\'\{([^\']+)\}\'', r'\1=\'\2\'', updated_html)
+                    
+                    # Clean up JSON-LD script content (URLs in JSON strings)
+                    updated_html = re.sub(r'"\{([^"]+)\}"', r'"\1"', updated_html)
+                    updated_html = re.sub(r':\s*"\{([^"]+)\}"', r': "\1"', updated_html)
+                    
+                    # Final comprehensive cleanup: Remove any remaining curly braces around URLs
+                    # This catches any edge cases we might have missed
+                    # Pattern: {https://...} or {https://... or https://...}
+                    updated_html = re.sub(r'\{(\s*https?://[^}\s"\'<>]+)\}', r'\1', updated_html)
+                    updated_html = re.sub(r'\{(\s*https?://[^}\s"\'<>]+)', r'\1', updated_html)
+                    updated_html = re.sub(r'(\s*https?://[^}\s"\'<>]+)\}', r'\1', updated_html)
+                    
+                    # Remove curly braces from JSON values (more specific pattern)
+                    updated_html = re.sub(r':\s*"\{([^"]+)\}"', r': "\1"', updated_html)
+                    updated_html = re.sub(r':\s*"([^"]*)\{([^"]+)\}([^"]*)"', r': "\1\2\3"', updated_html)
                     
                     # Upload HTML file to S3 bucket "suvichaarstories"
                     html_filename = f"{slug_nano}.html"
