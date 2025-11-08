@@ -51,6 +51,14 @@ except LookupError:
 DEFAULT_COVER_URL = "https://media.suvichaar.org/upload/covers/default_news.png"
 DEFAULT_SLIDE_IMAGE_URL = "https://media.suvichaar.org/upload/covers/default_news_slide.png"
 DEFAULT_CTA_AUDIO = "https://cdn.suvichaar.org/media/tts_cta_default.mp3"
+SLIDE_CHAR_LIMITS = {
+    1: 180,
+    2: 500,
+    3: 450,
+    4: 250,
+    5: 200,
+    "default": 200,
+}
 
 # ---- Azure OpenAI Client (for text/gen) ----
 client = AzureOpenAI(
@@ -135,6 +143,15 @@ voice_options = {
     "8": "kn-IN-SapnaNeural",
     "9": "pa-IN-GeetikaNeural"
 }
+
+
+def is_devanagari(text: str, threshold: float = 0.4) -> bool:
+    """Heuristically detect whether a text is primarily Devanagari."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return False
+    devanagari_count = sum(0x0900 <= ord(ch) <= 0x097F for ch in letters)
+    return (devanagari_count / len(letters)) >= threshold
 # Slug and URL generator (matching JavaScript Canurl function)
 def generate_slug_and_urls(title):
     if not title or not isinstance(title, str):
@@ -514,28 +531,55 @@ Return ONLY as JSON:
     }
 
 
-def title_script_generator(category, subcategory, emotion, article_text, content_language="English", character_sketch=None, middle_count=5):
+def title_script_generator(
+    category,
+    subcategory,
+    emotion,
+    article_text,
+    content_language="English",
+    character_sketch=None,
+    middle_count=5,
+    slide_char_limits=None,
+):
     if not character_sketch:
         character_sketch = (
             f"Polaris is a sincere and articulate {content_language} news anchor. "
             "They present facts clearly, concisely, and warmly, connecting deeply with their audience."
         )
 
-    # 🔹 Prompt to generate slides (excluding slide 1 narration)
+    if slide_char_limits is None:
+        slide_char_limits = SLIDE_CHAR_LIMITS
+
+    default_limit = slide_char_limits.get("default", 200)
+    guidance_map = {
+        2: "detail the main development with key figures, timelines, causes, and why it matters.",
+        3: "expand on background or precedent events that led to the current development.",
+        4: "summarise reactions, quotes, and immediate consequences for stakeholders.",
+        5: "outline likely next steps, unresolved questions, or forward-looking analysis.",
+    }
+
+    guidance_lines = []
+    for story_slide in range(2, middle_count + 2):
+        limit = slide_char_limits.get(story_slide, default_limit)
+        description = guidance_map.get(
+            story_slide,
+            "add further factual detail, supporting evidence, or expert insight while staying concise."
+        )
+        guidance_lines.append(
+            f"- Content Slide {story_slide - 1} (≤ {limit} characters): {description}"
+        )
+
+    guidance_text = "\n".join(guidance_lines) or "- Provide factual narrative for each slide."
+
     system_prompt = f"""
-You are a digital content editor.
+You are a senior news editor. Craft a clear, factual, and engaging web story in {content_language}.
+Produce exactly {middle_count} content slides (after the intro) that follow this structure:
+{guidance_text}
+- Use precise sentences with verifiable facts (names, numbers, chronology, causes, reactions, and outlook).
+- Avoid greetings or self-referential phrases.
+- Do not repeat the same information across slides.
 
-Create a structured {middle_count}-slide web story from the article below.
-
-Language: {content_language}
-
-Each slide must contain:
-- A short title in {content_language}
-{"- The title must be written in Hindi (Devanagari script)." if content_language == "Hindi" else ""}
-- A narration prompt (instruction only, don't write narration)
-{"- The narration prompt must also be in Hindi (Devanagari script)." if content_language == "Hindi" else ""}
-
-Format:
+Return JSON using this schema:
 {{
   "slides": [
     {{ "title": "...", "prompt": "..." }},
@@ -573,9 +617,17 @@ Article:
     headline = article_text.split("\n")[0].strip().replace('"', '')
 
     if content_language == "Hindi":
-        slide1_prompt = f"Generate a greeting and news headline narration in Hindi for the story: {headline}. Maximum 200 characters."
+        slide1_limit = slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1])
+        slide1_prompt = (
+            f"Generate news headline narration in Hindi for the story: {headline}. "
+            f"Maximum {slide1_limit} characters. Avoid greetings."
+        )
     else:
-        slide1_prompt = f"Generate a greeting and headline intro narration in English for: {headline}. Maximum 200 characters."
+        slide1_limit = slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1])
+        slide1_prompt = (
+            f"Generate headline intro narration in English for: {headline}. "
+            f"Maximum {slide1_limit} characters. Avoid greetings."
+        )
 
     slide1_response = client.chat.completions.create(
         model="gpt-5-chat",
@@ -584,11 +636,15 @@ Article:
             {"role": "user", "content": slide1_prompt}
         ]
     )
-    slide1_script = slide1_response.choices[0].message.content.strip()[:200]
+    slide1_script = textwrap.shorten(
+        slide1_response.choices[0].message.content.strip(),
+        width=slide1_limit,
+        placeholder="…"
+    )
 
     slides = [{
         "title": headline[:80],
-        "prompt": "Intro slide with greeting and headline.",
+        "prompt": "Intro slide with headline framing.",
         "image_prompt": f"Vector-style illustration of Polaris presenting news: {headline}",
         "script": slide1_script
     }]
@@ -596,12 +652,14 @@ Article:
     # 🔹 Generate narration for each slide
     for slide in slides_raw:
         script_language = f"{content_language} (use Devanagari script)" if content_language == "Hindi" else content_language
+        story_slide_index = len(slides) + 1  # includes intro already
+        target_limit = slide_char_limits.get(story_slide_index, default_limit)
         narration_prompt = f"""
-Write a narration in **{script_language}** (max 200 characters),
-in the voice of Polaris.
+Write a narration in **{script_language}** (max {target_limit} characters),
+in the voice of Polaris (factual, vivid, and neutral).
 
 Instruction: {slide['prompt']}
-Tone: Warm, clear, informative. No self-intro.
+Tone: Clear, informative, and detail-rich. No greetings or self-introductions.
 
 Character sketch:
 {character_sketch}
@@ -615,7 +673,11 @@ Character sketch:
                     {"role": "user", "content": narration_prompt.strip()}
                 ]
             )
-            narration = narration_response.choices[0].message.content.strip()[:200]
+            narration = textwrap.shorten(
+                narration_response.choices[0].message.content.strip(),
+                width=target_limit,
+                placeholder="…"
+            )
         except:
             narration = "Unable to generate narration for this slide."
 
@@ -694,137 +756,56 @@ def generate_slide(paragraph: str, audio_url: str, background_image_url: str = N
 def replace_placeholders_in_html(html_text, json_data, background_image_url=None):
     storytitle = json_data.get("slide1", {}).get("storytitle", "")
     storytitle_url = json_data.get("slide1", {}).get("audio_url", "")
-    
-    # Find hookline in any slide (second last before CTA)
-    hookline = ""
-    hookline_url = ""
-    hookline_slide_num = None
-    for key in sorted(json_data.keys(), key=lambda x: int(x.replace("slide", "")) if x.startswith("slide") else 999999):
-        if isinstance(json_data[key], dict) and "hookline" in json_data[key]:
-            hookline = json_data[key].get("hookline", "")
-            hookline_url = json_data[key].get("audio_url", "")
-            hookline_slide_num = int(key.replace("slide", ""))
-            break
 
     html_text = html_text.replace("{{storytitle}}", storytitle)
     html_text = html_text.replace("{{storytitle_audiourl}}", storytitle_url)
-    
+
     # Replace hardcoded images in template with user's uploaded image (if provided)
     if background_image_url:
-        # Replace Storytitle slide background image (Slide 1)
         html_text = html_text.replace(
             "https://media.suvichaar.org/upload/polaris/polariscover.png",
             background_image_url
         )
-        # Replace any other hardcoded polaris images in slides
         html_text = html_text.replace(
             "https://media.suvichaar.org/upload/polaris/polarisslide.png",
             background_image_url
         )
-    
-    # Insert middle slides (skip slide1 and hookline slide)
+
+    # Insert middle slides (skip slide1 which is storytitle)
     all_slides = ""
-    for key in sorted(json_data.keys(), key=lambda x: int(x.replace("slide", "")) if x.startswith("slide") else 999999):
-        slide_num = int(key.replace("slide", "")) if key.startswith("slide") else 999999
-        # Skip slide1 (storytitle) and hookline slide (will be inserted separately)
-        if slide_num == 1 or slide_num == hookline_slide_num:
+    for key in sorted(
+        json_data.keys(),
+        key=lambda x: int(x.replace("slide", "")) if x.startswith("slide") else 999999
+    ):
+        if not key.startswith("slide"):
             continue
-        
+
+        slide_num = int(key.replace("slide", ""))
+        if slide_num == 1:
+            continue
+
         data = json_data[key]
-        # Ensure data is a dictionary
         if not isinstance(data, dict):
             continue
-        
-        # Find the paragraph key in this slide data
+
         paragraph = ""
         audio_url = data.get("audio_url", "")
         for k, v in data.items():
             if k.startswith("s") and "paragraph1" in k and isinstance(v, str):
                 paragraph = v.replace("'", "'").replace('"', '&quot;')
-                paragraph = textwrap.shorten(paragraph, width=180, placeholder="...")
                 break
-        
+
         if paragraph and audio_url:
             all_slides += generate_slide(paragraph, audio_url, background_image_url)
-    
-    # Insert hookline slide before the last CTA slide (which is already in template)
-    if hookline and hookline_url:
-        hookline_slide = generate_slide(hookline, hookline_url, background_image_url)
-        all_slides += hookline_slide
-    
-    # Replace the <!--INSERT_SLIDES_HERE--> placeholder
+
     html_text = html_text.replace("<!--INSERT_SLIDES_HERE-->", all_slides)
 
     return html_text
 
-# Tab 4 layout // Hookline modified 
-def generate_hookline(title, summary, content_language="English"):
-    # Prepare prompt based on language
-    if content_language == "Hindi":
-        prompt = f"""
-आप 'पोलारिस' नामक एक सोशल मीडिया रणनीतिकार हैं और चैनल 'सुविचार' के लिए कार्य करते हैं। आपका कार्य है एक संक्षिप्त, ध्यान खींचने वाली *हुकलाइन* बनाना जो इस समाचार की ओर दर्शकों का ध्यान आकर्षित करे।
-
-शीर्षक: {title}
-सारांश: {summary}
-
-भाषा: हिंदी
-
-अनुरोध:
-- केवल एक वाक्य हो
-- हैशटैग, इमोजी या अधिक विराम चिह्न न हो
-- भाषा सरल और भावनात्मक रूप से आकर्षक हो
-- 120 वर्णों से कम होनी चाहिए
-- उद्धरण ("") शामिल न करें
-
-उदाहरण:
-- सरकार का यह कदम सबको चौंका देगा।
-- भारत का अंतरिक्ष में साहसिक कदम।
-
-अब कृपया पोलारिस की आवाज़ में हुकलाइन दीजिए:
-"""
-    else:
-        prompt = f"""
-You are Polaris, a social media strategist for the news channel 'Suvichaar'. Your job is to create a short, attention-grabbing *hookline* for a news story.
-
-Title: {title}
-Summary: {summary}
-
-Language: {content_language}
-
-Requirements:
-- One sentence only
-- Avoid hashtags, emojis, and excessive punctuation
-- Use simple and emotionally engaging language
-- Must be under 120 characters
-- Do not include quotes in output
-
-Example formats:
-- What happened next will shock you.
-- India's bold step in space tech.
-
-Now generate the hookline in Polaris' tone:
-"""
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-5-chat",
-            messages=[
-                {"role": "system", "content": "You create viral hooklines for news stories."},
-                {"role": "user", "content": prompt.strip()}
-            ]
-        )
-        return response.choices[0].message.content.strip().strip('"')
-
-    except Exception as e:
-        print(f"❌ Hookline generation failed: {e}")
-        return "यह खबर आपको चौंका सकती है!" if content_language == "Hindi" else "This story might surprise you!"
-
-
-
-
-def restructure_slide_output(final_output):
+def restructure_slide_output(final_output, limits):
     slides = final_output.get("slides", [])
     structured = {}
+    default_limit = limits.get("default", 200)
 
     for idx, slide in enumerate(slides):
         key = f"s{idx + 1}paragraph1"
@@ -834,6 +815,10 @@ def restructure_slide_output(final_output):
         if not script:
             fallback = slide.get("title") or slide.get("prompt") or "Content unavailable"
             script = fallback.strip()
+
+        target_limit = limits.get(idx + 1, default_limit)
+        if len(script) > target_limit:
+            script = textwrap.shorten(script, width=target_limit, placeholder="…")
 
         structured[key] = script
 
@@ -865,17 +850,6 @@ def generate_remotion_input(tts_output: dict, fixed_image_url: str, author_name:
                 f"s{slide_index}paragraph2": f"- {author_name}"
             }
             slide_index += 1
-
-    # Hookline as second last slide
-    if "hookline" in tts_output:
-        slide_key = f"slide{slide_index}"
-        remotion_data[slide_key] = {
-            f"s{slide_index}paragraph1": tts_output["hookline"],
-            f"s{slide_index}audio1": tts_output.get(slide_key, {}).get("audio_url", ""),
-            f"s{slide_index}image1": fixed_image_url,
-            f"s{slide_index}paragraph2": f"- {author_name}"
-        }
-        slide_index += 1
 
     # ✅ Final CTA slide (always last)
     remotion_data[f"slide{slide_index}"] = {
@@ -987,20 +961,6 @@ def synthesize_and_upload(paragraphs, voice):
         os.remove(local_path)
         slide_index += 1
 
-    # Last slide: hookline + fixed footer
-    if "hookline" in paragraphs:
-        hookline_text = paragraphs["hookline"]
-        audio_bytes = azure_tts_generate(hookline_text, voice)
-        filename = f"tts_{uuid.uuid4().hex}.mp3"
-        local_path = os.path.join("temp", filename)
-        with open(local_path, "wb") as f:
-            f.write(audio_bytes)
-        s3_key = f"{S3_PREFIX}{filename}"
-        s3.upload_file(local_path, AWS_BUCKET, s3_key)
-        cdn_url = f"{CDN_BASE}{s3_key}"
-        result[f"slide{slide_index}"] = {"hookline": hookline_text, "audio_url": cdn_url, "voice": voice}
-        os.remove(local_path)
-
     return result
 
 def transliterate_to_devanagari(json_data):
@@ -1029,7 +989,7 @@ def transliterate_to_devanagari(json_data):
 
     return updated
 
-def generate_storytitle(title, summary, content_language="English"):
+def generate_storytitle(title, summary, content_language="English", max_chars=180):
     if content_language == "Hindi":
         prompt = f"""
 आप एक समाचार शीर्षक विशेषज्ञ हैं। नीचे दी गई अंग्रेज़ी समाचार शीर्षक और सारांश को पढ़कर, उसी का अर्थ बनाए रखते हुए एक नया आकर्षक **हिंदी शीर्षक** बनाइए।
@@ -1038,29 +998,40 @@ def generate_storytitle(title, summary, content_language="English"):
 सारांश: {summary}
 
 अनुरोध:
-- केवल एक पंक्ति
+- केवल एक वाक्य
 - भाषा सरल और स्पष्ट हो
 - भावनात्मक रूप से आकर्षक हो
 - उद्धरण ("") शामिल न करें
+- अधिकतम {max_chars} वर्ण
 
 अब कृपया हिंदी शीर्षक दीजिए:
 """
     else:
-        return title.strip()
+        prompt = f"""
+You are an experienced news editor. Craft a single-sentence English headline (maximum {max_chars} characters) that captures the essence of the following story. 
+Highlight the key actors and the central development. Avoid quotes, hashtags, or greetings.
+
+Original title: {title}
+Summary: {summary}
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-5-chat",
             messages=[
-                {"role": "system", "content": "You generate clear and catchy news headlines."},
+                {"role": "system", "content": "You generate clear and concise news headlines."},
                 {"role": "user", "content": prompt.strip()}
             ]
         )
-        return response.choices[0].message.content.strip().strip('"')
+        raw_title = response.choices[0].message.content.strip().strip('"')
+        return textwrap.shorten(raw_title, width=max_chars, placeholder="…")
 
     except Exception as e:
         print(f"❌ Storytitle generation failed: {e}")
-        return title.strip()
+        fallback = title.strip()
+        if summary:
+            fallback = f"{title.strip()}: {summary.strip()}"
+        return textwrap.shorten(fallback, width=max_chars, placeholder="…")
 
 
 # === Streamlit UI ===
@@ -1128,14 +1099,23 @@ content_language = st.selectbox(
 # Number of slides
 persona = "Expert news anchor"  # Fixed persona
 number = st.number_input(
-    "Enter total number of slides (including Storytitle, Hookline, and CTA slide)",
+    "Enter total number of slides (including Storytitle and CTA slide)",
     min_value=4,
     max_value=10,
     value=8,
     step=1
 )
-# User enters total slides, we need middle slides (minus 3 for storytitle, hookline, and CTA)
-middle_count = number - 3
+# User enters total slides, we need middle slides (minus 2 for storytitle and CTA)
+middle_count = max(2, number - 2)
+
+# Character limit per slide
+max_chars = st.slider(
+    "Max characters per slide",
+    min_value=150,
+    max_value=260,
+    value=200,
+    step=10
+)
 
 if st.button("🚀 Generate Complete Web Story"):
     # Determine which input method was used and extract content
@@ -1224,15 +1204,28 @@ if st.button("🚀 Generate Complete Web Story"):
                 subcategory = result["subcategory"]
                 emotion = result["emotion"]
 
-                # Step 6: Generate hookline and storytitle
-                hookline = generate_hookline(title, summary, content_language)
-                storytitle = generate_storytitle(title, summary, content_language)
+                slide_char_limits = SLIDE_CHAR_LIMITS.copy()
+                slide_char_limits["default"] = max_chars
+
+                storytitle_language = "Hindi" if is_devanagari(full_text) else content_language
+                storytitle = generate_storytitle(
+                    title,
+                    summary,
+                    storytitle_language,
+                    max_chars=slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1])
+                )
                 
                 st.session_state.story_title_from_tab1 = storytitle
 
                 # Step 7: Generate slide content
                 output = title_script_generator(
-                    category, subcategory, emotion, full_text, content_language, middle_count=middle_count
+                    category,
+                    subcategory,
+                    emotion,
+                    full_text,
+                    content_language,
+                    middle_count=middle_count,
+                    slide_char_limits=slide_char_limits
                 )
 
                 final_output = {
@@ -1244,19 +1237,20 @@ if st.button("🚀 Generate Complete Web Story"):
                     "subcategory": subcategory,
                     "persona": persona,
                     "slides": output.get("slides", []),
-                    "storytitle": storytitle,
-                    "hookline": hookline
+                    "storytitle": storytitle
                 }
 
                 # Step 8: Flatten into story JSON
                 structured_output = OrderedDict()
-                structured_output["storytitle"] = storytitle
+                structured_output["storytitle"] = textwrap.shorten(
+                    storytitle,
+                    width=slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1]),
+                    placeholder="…"
+                )
 
-                for i in range(1, middle_count + 1):
-                    key = f"s{i}paragraph1"
-                    structured_output[key] = restructure_slide_output(final_output).get(key, "")
-
-                structured_output["hookline"] = hookline
+                flattened_slides = restructure_slide_output(final_output, slide_char_limits)
+                for key, value in flattened_slides.items():
+                    structured_output[key] = value
                 
             except Exception as e:
                 st.error(f"❌ Error in content generation: {str(e)}")
