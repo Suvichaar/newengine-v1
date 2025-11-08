@@ -543,10 +543,12 @@ def title_script_generator(
 
     default_limit = slide_char_limits.get("default", 200)
     guidance_map = {
-        2: "detail the main development with key figures, timelines, causes, and why it matters.",
-        3: "expand on background or precedent events that led to the current development.",
-        4: "summarise reactions, quotes, and immediate consequences for stakeholders.",
-        5: "outline likely next steps, unresolved questions, or forward-looking analysis.",
+        2: "detail the core development with precise names, locations, and the headline claim.",
+        3: "explain earlier context, build-up, or precedent events that shaped the story.",
+        4: "highlight supporting evidence—quotes, data points, documents, or eyewitness accounts.",
+        5: "capture reactions from officials, experts, or the public and note immediate fallout.",
+        6: "examine broader implications such as geopolitical, economic, or social impact.",
+        7: "surface remaining questions, unresolved angles, or investigative threads still open.",
     }
 
     guidance_lines = []
@@ -575,6 +577,9 @@ Produce exactly {middle_count} content slides (after the intro) that follow this
 - Use precise sentences with verifiable facts (names, numbers, chronology, causes, reactions, and outlook).
 - Avoid greetings or self-referential phrases.
 - Do not repeat the same information across slides.
+- Sequence the story so the reader can follow a beginning → build-up → fallout → forward look narrative.
+- Distribute the article’s information evenly: each slide must surface fresh details drawn from different sections of the article.
+- If there are more slides than guidance items above, continue adding unique insights (quotes, stats, takeaways) without repeating earlier content.
 
 Return JSON using this schema:
 {{
