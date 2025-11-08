@@ -570,21 +570,28 @@ def title_script_generator(
     )
 
     system_prompt = f"""
-You are a senior news editor. Craft a clear, factual, and engaging web story in {content_language}.
-Produce exactly {middle_count} content slides (after the intro) that follow this structure:
-{guidance_text}
-- {language_clause}
-- Use precise sentences with verifiable facts (names, numbers, chronology, causes, reactions, and outlook).
-- Avoid greetings or self-referential phrases.
-- Do not repeat the same information across slides.
-- Sequence the story so the reader can follow a beginning → build-up → fallout → forward look narrative.
-- Distribute the article’s information evenly: each slide must surface fresh details drawn from different sections of the article.
-- If there are more slides than guidance items above, continue adding unique insights (quotes, stats, takeaways) without repeating earlier content.
+Create an engaging Google Web Story based on the news article provided below.
 
-Return JSON using this schema:
+Objectives:
+- Extract the key highlights, timelines, verified facts, and impactful quotes.
+- Summarize the complete story visually across {middle_count} slides (target range 8–10 when article length allows).
+- Keep the tone informative, balanced, and visually compelling.
+- Provide slide-wise captions and background image suggestions that align with each phase of the story.
+- Maintain chronological flow: introduction → build-up → evidence → reactions → implications → outlook.
+- Avoid repetition; each slide must surface fresh details pulled from different portions of the article.
+
+Language requirements:
+- {language_clause}
+- All fields must be written in {content_language}.
+
+Return JSON strictly in this format:
 {{
   "slides": [
-    {{ "title": "...", "prompt": "..." }},
+    {{
+      "title": "<concise slide caption (≤ 90 characters)>",
+      "summary": "<two or three sentences covering the facts for narration>",
+      "image_prompt": "<background or visual suggestion relevant to this slide>"
+    }},
     ...
   ]
 }}
@@ -661,12 +668,23 @@ Article:
             if content_language == "Hindi"
             else "Deliver the narration strictly in English. Do not include Hindi words or transliteration."
         )
+
+        caption = (slide.get("title") or "").strip()
+        summary_brief = (slide.get("summary") or slide.get("caption") or slide.get("prompt") or "").strip()
+        image_prompt = (slide.get("image_prompt") or "").strip()
+
+        if not summary_brief:
+            summary_brief = caption or "Provide factual narration for this segment."
+
         narration_prompt = f"""
 Write a narration in **{script_language}** (max {target_limit} characters),
 in the voice of Polaris (factual, vivid, and neutral). {language_requirement}
 
-Instruction: {slide['prompt']}
-Tone: Clear, informative, and detail-rich. No greetings or self-introductions.
+Key points to cover:
+{summary_brief}
+
+Visual inspiration:
+{image_prompt or 'Use a neutral newsroom-inspired background.'}
 
 Character sketch:
 {character_sketch}
@@ -689,9 +707,9 @@ Character sketch:
             narration = "Unable to generate narration for this slide."
 
         slides.append({
-            "title": slide['title'],
-            "prompt": slide['prompt'],
-            "image_prompt": f"Modern vector-style visual for: {slide['title']}",
+            "title": caption or slide.get("title", ""),
+            "prompt": summary_brief,
+            "image_prompt": image_prompt or f"Modern vector-style visual for: {caption or slide.get('title', '')}",
             "script": narration
         })
 
