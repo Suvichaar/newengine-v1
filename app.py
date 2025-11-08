@@ -143,15 +143,6 @@ voice_options = {
     "8": "kn-IN-SapnaNeural",
     "9": "pa-IN-GeetikaNeural"
 }
-
-
-def is_devanagari(text: str, threshold: float = 0.4) -> bool:
-    """Heuristically detect whether a text is primarily Devanagari."""
-    letters = [ch for ch in text if ch.isalpha()]
-    if not letters:
-        return False
-    devanagari_count = sum(0x0900 <= ord(ch) <= 0x097F for ch in letters)
-    return (devanagari_count / len(letters)) >= threshold
 # Slug and URL generator (matching JavaScript Canurl function)
 def generate_slug_and_urls(title):
     if not title or not isinstance(title, str):
@@ -570,11 +561,17 @@ def title_script_generator(
         )
 
     guidance_text = "\n".join(guidance_lines) or "- Provide factual narrative for each slide."
+    language_clause = (
+        "Write all slide titles and prompts in Hindi (Devanagari script)."
+        if content_language == "Hindi"
+        else "Write all slide titles and prompts in English, even if the article text is in another language."
+    )
 
     system_prompt = f"""
 You are a senior news editor. Craft a clear, factual, and engaging web story in {content_language}.
 Produce exactly {middle_count} content slides (after the intro) that follow this structure:
 {guidance_text}
+- {language_clause}
 - Use precise sentences with verifiable facts (names, numbers, chronology, causes, reactions, and outlook).
 - Avoid greetings or self-referential phrases.
 - Do not repeat the same information across slides.
@@ -620,13 +617,13 @@ Article:
         slide1_limit = slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1])
         slide1_prompt = (
             f"Generate news headline narration in Hindi for the story: {headline}. "
-            f"Maximum {slide1_limit} characters. Avoid greetings."
+            f"Maximum {slide1_limit} characters. Avoid greetings. Respond in Hindi (Devanagari script) only."
         )
     else:
         slide1_limit = slide_char_limits.get(1, SLIDE_CHAR_LIMITS[1])
         slide1_prompt = (
             f"Generate headline intro narration in English for: {headline}. "
-            f"Maximum {slide1_limit} characters. Avoid greetings."
+            f"Maximum {slide1_limit} characters. Avoid greetings. Respond in English only, translating the source if necessary."
         )
 
     slide1_response = client.chat.completions.create(
@@ -654,9 +651,14 @@ Article:
         script_language = f"{content_language} (use Devanagari script)" if content_language == "Hindi" else content_language
         story_slide_index = len(slides) + 1  # includes intro already
         target_limit = slide_char_limits.get(story_slide_index, default_limit)
+        language_requirement = (
+            "Deliver the narration strictly in Hindi (Devanagari script)."
+            if content_language == "Hindi"
+            else "Deliver the narration strictly in English. Do not include Hindi words or transliteration."
+        )
         narration_prompt = f"""
 Write a narration in **{script_language}** (max {target_limit} characters),
-in the voice of Polaris (factual, vivid, and neutral).
+in the voice of Polaris (factual, vivid, and neutral). {language_requirement}
 
 Instruction: {slide['prompt']}
 Tone: Clear, informative, and detail-rich. No greetings or self-introductions.
@@ -1207,7 +1209,7 @@ if st.button("🚀 Generate Complete Web Story"):
                 slide_char_limits = SLIDE_CHAR_LIMITS.copy()
                 slide_char_limits["default"] = max_chars
 
-                storytitle_language = "Hindi" if is_devanagari(full_text) else content_language
+                storytitle_language = "Hindi" if content_language == "Hindi" else "English"
                 storytitle = generate_storytitle(
                     title,
                     summary,
