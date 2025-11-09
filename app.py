@@ -52,7 +52,7 @@ DEFAULT_COVER_URL = "https://media.suvichaar.org/upload/covers/default_news.png"
 DEFAULT_SLIDE_IMAGE_URL = "https://media.suvichaar.org/upload/covers/default_news_slide.png"
 DEFAULT_CTA_AUDIO = "https://cdn.suvichaar.org/media/tts_cta_default.mp3"
 SLIDE_CHAR_LIMITS = {
-    1: 180,
+    1: 80,
     2: 500,
     3: 450,
     4: 250,
@@ -1375,7 +1375,7 @@ if st.button("🚀 Generate Complete Web Story"):
                     
                     # Generate URLs
                     nano, slug_nano, canurl, canurl1 = generate_slug_and_urls(storytitle)
-                    page_title = f"{storytitle} | Suvichaar"
+                    page_title = f"{storytitle}| Suvichaar"
                     
                     # User mapping
                     user_mapping = {
